@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 
+	"github.com/JamesClonk/opsgenie-tray/icons"
 	"github.com/getlantern/systray"
-	"github.com/getlantern/systray/example/icon"
 	"github.com/opsgenie/opsgenie-go-sdk/alertsv2"
 	"github.com/opsgenie/opsgenie-go-sdk/client"
 	"github.com/skratchdot/open-golang/open"
@@ -30,9 +30,9 @@ func init() {
 	flags()
 	loadConfig()
 
-	defaultIcon = icon.Data
-	warningIcon = icon.Data
-	criticalIcon = icon.Data
+	defaultIcon = icons.Base
+	warningIcon = icons.Blue
+	criticalIcon = icons.Red
 }
 
 func flags() {
@@ -60,26 +60,28 @@ func main() {
 func onReady() {
 	systray.SetIcon(defaultIcon)
 	systray.SetTitle("OpsGenie-Tray")
-	systray.SetTooltip("Lantern")
+	systray.SetTooltip("OpsGenie Alerts")
 
-	mOpsGenie := systray.AddMenuItem("Open OpsGenie", "Open OpsGenie website")
-	//mQuit := systray.AddMenuItem("Quit", "Quit OpsGenie-Tray")
+	mOpsGenie := systray.AddMenuItem("Open OpsGenie Alerts", "Open OpsGenie alert website")
+	mQuit := systray.AddMenuItem("Quit", "Quit OpsGenie-Tray")
 
 	go func() {
-		select {
-		// case <-mQuit.ClickedCh:
-		// 	fmt.Println("Quitting ...")
-		// 	systray.Quit()
-		case <-mOpsGenie.ClickedCh:
-			open.Run("https://app.opsgenie.com/alert")
+		for {
+			select {
+			case <-mQuit.ClickedCh:
+				fmt.Println("Quitting ...")
+				systray.Quit()
+			case <-mOpsGenie.ClickedCh:
+				open.Run("https://app.opsgenie.com/alert")
+			}
 		}
 	}()
 
-	cli := getOpsGenieClient()
-	go func() {
-		alerts := getAlerts(cli)
-		log.Printf("%#v\n", alerts)
-	}()
+	// cli := getOpsGenieClient()
+	// go func() {
+	// 	alerts := getAlerts(cli)
+	// 	log.Printf("%#v\n", alerts)
+	// }()
 }
 
 func getOpsGenieClient() *client.OpsGenieAlertV2Client {
