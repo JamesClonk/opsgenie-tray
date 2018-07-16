@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/JamesClonk/opsgenie-tray/icons"
 	"github.com/getlantern/systray"
@@ -18,12 +19,16 @@ var (
 	defaultIcon  []byte
 	warningIcon  []byte
 	criticalIcon []byte
+	critical     bool
+	warning      bool
+	flash        bool
 	configFile   string
 	config       Config
 )
 
 type Config struct {
-	APIKey string `json:"api_key"`
+	APIKey   string `json:"api_key"`
+	ShowQuit bool   `json:"show_quit"`
 }
 
 func init() {
@@ -62,26 +67,104 @@ func onReady() {
 	systray.SetTitle("OpsGenie-Tray")
 	systray.SetTooltip("OpsGenie Alerts")
 
+	// Menu entry for opening up OpsGenie Alert website
 	mOpsGenie := systray.AddMenuItem("Open OpsGenie Alerts", "Open OpsGenie alert website")
-	mQuit := systray.AddMenuItem("Quit", "Quit OpsGenie-Tray")
+	systray.AddSeparator()
 
+	// add Alert entries into array, to be dynamically updated later on
+	mAlerts := make([]*systray.MenuItem, 0)
+	for i := 0; i <= 9; i++ {
+		mAlerts = append(mAlerts, systray.AddMenuItem("Alert", "OpsGenie Alert"))
+		mAlerts[i].Hide()
+	}
+
+	// optional Quit entry
+	var mQuit *systray.MenuItem
+	if config.ShowQuit {
+		systray.AddSeparator()
+		mQuit = systray.AddMenuItem("Quit", "Quit OpsGenie-Tray")
+	}
+
+	// API request ticker
+	requestTicker := time.NewTicker(20 * time.Second)
+	cli := getOpsGenieClient()
+	checkAlerts(cli, mAlerts)
+
+	// main event loop
 	go func() {
 		for {
 			select {
-			case <-mQuit.ClickedCh:
-				fmt.Println("Quitting ...")
-				systray.Quit()
 			case <-mOpsGenie.ClickedCh:
 				open.Run("https://app.opsgenie.com/alert")
+			case <-requestTicker.C:
+				checkAlerts(cli, mAlerts)
 			}
 		}
 	}()
 
-	// cli := getOpsGenieClient()
-	// go func() {
-	// 	alerts := getAlerts(cli)
-	// 	log.Printf("%#v\n", alerts)
-	// }()
+	// flasher
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+			if critical || warning {
+				if flash {
+					if critical {
+						systray.SetIcon(criticalIcon)
+					} else if warning {
+						systray.SetIcon(warningIcon)
+					}
+				} else {
+					systray.SetIcon(defaultIcon)
+				}
+				flash = !flash
+			}
+		}
+	}()
+
+	if config.ShowQuit {
+		<-mQuit.ClickedCh
+		fmt.Println("Quitting ...")
+		systray.Quit()
+	}
+}
+
+func checkAlerts(cli *client.OpsGenieAlertV2Client, mAlerts []*systray.MenuItem) {
+	alerts := getAlerts(cli, "status: open")
+
+	// reset state
+	critical = false
+	warning = false
+
+	for _, alert := range mAlerts {
+		alert.Hide()
+	}
+	for i, alert := range alerts {
+		if i > 9 {
+			break
+		}
+
+		level := "warning"
+		for _, tag := range alert.Tags { // get level
+			if tag == "critical" {
+				critical = true // set critical state if we have any such alerts
+				level = "critical"
+			}
+		}
+
+		// only show them on the list if unacknowledged or critical
+		if level == "critical" || !alert.Acknowledged {
+			mAlerts[i].SetTitle(alert.Message)
+			mAlerts[i].Show()
+
+			if !critical { // dont overwrite critical state flag
+				warning = true // only flash warning on unacknowledged alerts
+			}
+		}
+	}
+
+	if !critical && !warning {
+		systray.SetIcon(defaultIcon)
+	}
 }
 
 func getOpsGenieClient() *client.OpsGenieAlertV2Client {
@@ -95,14 +178,17 @@ func getOpsGenieClient() *client.OpsGenieAlertV2Client {
 	return alertCli
 }
 
-func getAlerts(cli *client.OpsGenieAlertV2Client) []alertsv2.Alert {
-	req := alertsv2.ListAlertRequest{}
-	req.Limit = 25
+func getAlerts(cli *client.OpsGenieAlertV2Client, query string) []alertsv2.Alert {
+	req := alertsv2.ListAlertRequest{
+		Limit:  10,
+		Offset: 0,
+		//Query:  "status: open AND acknowledged: false",
+		Query: query,
+	}
 
 	resp, err := cli.List(req)
 	if err != nil {
 		log.Fatalf("%v\n", err)
 	}
-	log.Printf("%#v\n", resp)
 	return resp.Alerts
 }
