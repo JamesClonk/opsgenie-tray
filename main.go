@@ -180,7 +180,7 @@ func getOpsGenieClient() *client.OpsGenieAlertV2Client {
 
 func getAlerts(cli *client.OpsGenieAlertV2Client, query string) []alertsv2.Alert {
 	req := alertsv2.ListAlertRequest{
-		Limit:  10,
+		Limit:  25,
 		Offset: 0,
 		//Query:  "status: open AND acknowledged: false",
 		Query: query,
