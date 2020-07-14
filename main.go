@@ -95,7 +95,7 @@ func onReady() {
 		for {
 			select {
 			case <-mOpsGenie.ClickedCh:
-				open.Run("https://app.opsgenie.com/alert")
+				open.Run("https://app.eu.opsgenie.com/alert")
 			case <-requestTicker.C:
 				checkAlerts(cli, mAlerts)
 			}
@@ -169,6 +169,7 @@ func checkAlerts(cli *client.OpsGenieAlertV2Client, mAlerts []*systray.MenuItem)
 
 func getOpsGenieClient() *client.OpsGenieAlertV2Client {
 	cli := new(client.OpsGenieClient)
+	cli.SetOpsGenieAPIUrl("https://api.eu.opsgenie.com")
 	cli.SetAPIKey(config.APIKey)
 
 	alertCli, err := cli.AlertV2()
